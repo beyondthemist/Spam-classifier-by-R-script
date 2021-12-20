@@ -1,0 +1,232 @@
+**Pre-processing**
+* 필요한 패키지 중 설치되어있지 않은 패키지만 설치
+* 작업 디렉토리 설정
+```{r}
+pkgs = c("tm", "readxl", "wordcloud")
+pkgs = pkgs[!(pkgs %in% library()$results[, "Package"])]
+install.packages(pkgs)
+#setwd(WORKING_DIRECTORY)
+```
+
+
+**Step1: Import data and split**
+* 데이터셋을 읽어온다.
+* column은 sequence number, label, text, label_num으로 구성되며, 분석에 필요한 text와 label_num만 남긴다.
+* label_num은 spam이면 1, ham이면 0이다.
+* 
+* label은 spam과 ham으로 구분되며, 데이터가 없는 부분(NA, null)은 빈 문자열("")로 변환한다.
+* ham과 spam을 묶기 위해 label_num을 기준으로 정렬해 앞부분은 ham, 뒷부분은 spam이 된다.
+```{r}
+library(readxl)
+training_data = readxl::read_xlsx(".\\input\\training.xlsx")
+training_data <- training_data[c("text", "label_num")] 
+
+spam_data <- training_data[training_data$label_num==1, ]
+spam_data$text[is.na(spam_data$text)] <- ""
+
+ham_data <- training_data[training_data$label_num==0, ]
+ham_data$text[is.na(ham_data$text)] <- ""
+
+print(paste0("Whole: ", toString(length(training_data$text))))
+print(paste0("Spam: ", toString(length(spam_data$text))))
+print(paste0("Ham: ", toString(length(ham_data$text))))
+```
+
+
+**Step2: Creating list of most frequent words**
+* text 말뭉치(corpus, 특정 집단 내에서 사용한 단어들을 모아서 정리해둔 것)로 변환한다.
+* 이 과정에서 구두점, 공백이 제거되고 '단어'만 남는다.
+* 이 작업은 ham mail과 spam mail 모두에 적용된다.
+* findFreqTerms()는 주어진 수치 이상의 빈도 수를 보이는 단어들을 반환한다.
+```{r}
+library(tm)
+
+spam_freq = 40
+ham_freq= 50
+
+corpus_spam <- Corpus(VectorSource(spam_data$text))
+tdm_spam <- TermDocumentMatrix(corpus_spam)
+spam_words <- as.array(findFreqTerms(tdm_spam, spam_freq))
+
+corpus_ham <- Corpus(VectorSource(ham_data$text))
+tdm_ham <- TermDocumentMatrix(corpus_ham)
+ham_words <- as.array(findFreqTerms(tdm_ham, ham_freq))
+
+
+library(wordcloud)
+windows(width=800, height=800)
+pal=brewer.pal(8, "Dark2")
+set.seed(1111)
+wordcloud(word=spam_words,
+          min.freq=spam_freq,
+          max.word=200,
+          random.order=F,
+          rot.per=0.3,
+          scale=c(4, 0.3),
+          colors=pal)
+savePlot(".\\spam_words.png", type="png")
+
+wordcloud(word=ham_words,
+          min.freq=ham_freq,
+          max.word=200,
+          random.order=F,
+          rot.per=0.3,
+          scale=c(4, 0.3),
+          colors=pal)
+savePlot(".\\ham_words.png", type="png")
+
+print(paste0("Ham words: ", length(ham_words), " including ", toString(head(ham_words))))
+print(paste0("spam words: ", length(spam_words), " including ", toString(head(spam_words))))
+```
+
+
+**Step3.1: Checking for Ham mails**
+* 각 text에 대해 ham 메일에 가까운지 spam 메일에 가까운지 검사한다.
+* ham > spam이면 ham 메일로 판단한다.
+```{r}
+result <- rep(0, length(ham_data$text))
+for(i in c(1:length(ham_data$text)))
+{
+  ham_text = ham_data$text[i][1]
+  if((ham_text == "") | is.na(ham_text))
+  {
+    result[i] <- NA
+  }
+  else
+  {
+    cp <- Corpus(VectorSource(ham_text))
+    tdm <- TermDocumentMatrix(cp)
+    words <- as.array(tdm$dimnames$Terms)
+
+    spam_count <- length(words[words %in% spam_words])
+    ham_count <- length(words[words %in% ham_words])
+
+    if(ham_count < spam_count) { result[i] <- 1 }
+  }
+}
+
+# ham mail에 대해서 label을 붙이므로 result에 0이 많을수록 좋은 것
+# 즉 ham_ratio는 100%에 가까울수록 좋은 것
+ham_acc = (length(result[result == 0])) / (length(result))
+print(paste0("Ham accuracy: ", toString(ham_acc*100), "%"))
+```
+
+**Step3.2: Checking for Spam mails**
+* 3.1과 똑같은 작업을 수행한다.
+* 3.1에서는 ham mail 여부를 검사했지만 여기서는 spam mail 여부를 검사한다.
+```{r}
+result <- rep(1, length(spam_data$text))
+for(i in c(1:length(spam_data$text)))
+{
+  spam_text = spam_data$text[i][1]
+  
+  if((spam_text == "") | is.na(spam_text))
+  {
+    result[i] <- NA
+  }
+  else
+  {
+    cp <- Corpus(VectorSource(spam_text))
+    tdm <- TermDocumentMatrix(cp)
+    words <- as.array(tdm$dimnames$Terms)
+    
+    spam_count <- length(words[words %in% spam_words])
+    ham_count <- length(words[words %in% ham_words])
+    
+    if(spam_count < ham_count) { result[i] <- 0 }
+  }
+}
+
+spam_acc <- (length(result[result == 1])) / (length(result))
+print(paste0("Spam accuracy: ", toString(spam_acc*100), "%"))
+```
+
+
+**Step4: Checking for whole dataset**
+```{r}
+data <- training_data
+result <- rep(0,length(data$text))
+for(i in c(1:length(data$text)))
+{
+  text = data$text[i][1]
+  if((text == "") | is.na(text))
+  {
+    result[i] <- NA
+  }
+  else
+  {
+    cp <- Corpus(VectorSource(text))
+    tdm <- TermDocumentMatrix(cp)
+    words <- as.array(tdm$dimnames$Terms)
+    
+    spam_count <- length(words[words %in% spam_words])
+    ham_count <- length(words[words %in% ham_words])
+    
+    result[i] <- ifelse(spam_count > ham_count, 1, 0)
+  }
+}
+
+acc = (length(result[result == data$label_num])) / (length(result))
+print(paste0("Accuracy: ", toString(acc*100), "%"))
+
+```
+
+**Step5: Checking for test dataset**
+```{r}
+test_data <- readxl::read_xlsx(".\\input\\test.xlsx")
+test_data <- test_data[c("text", "label_num")] 
+result <- rep(0,length(test_data$text))
+for(i in c(1:length(test_data$text)))
+{
+  text = test_data$text[i][1]
+  if((text == "") | is.na(text))
+  {
+    result[i] <- NA
+  }
+  else
+  {
+    cp <- Corpus(VectorSource(text))
+    tdm <- TermDocumentMatrix(cp)
+    words <- as.array(tdm$dimnames$Terms)
+
+    ham_count <- length(words[words %in% ham_words])
+    spam_count <- length(words[words %in% ham_words])
+
+    result[i] <- ifelse(spam_count > ham_count, 1, 0)
+  }
+}
+
+acc = (length(result[result == test_data$label_num])) / (length(result))
+print(paste0("Test accuracy: ", toString(acc*100), "%"))
+```
+
+
+
+**Step6: Logistic regression for test dataset**
+```{r}
+dataset <- readxl::read_xlsx(".\\input\\training.xlsx")
+dataset <- readxl::read_xlsx(".\\input\\test.xlsx")
+data <- dataset[, c("seq", "label", "text", "label_num")]
+
+data <- as.data.frame(data[, c("label", "text", "label_num")])
+data$label <- as.factor(data$label)
+data$text <- as.character(data$text)
+data$label_num <- as.integer(data$label_num)
+mdl <- glm(label_num ~ label+text, data=data, family=binomial(link='logit'))
+pred <- predict.glm(mdl, data, type="response")
+pred <- ifelse(pred > 0.5, 1, 0)
+
+tp <- length(pred[(pred == data$label_num) & (pred == 1)])
+tn <- length(pred[(pred == data$label_num) & (pred == 0)])
+fp <- length(pred[(pred != data$label_num) & (pred == 1)])
+fn <- length(pred[(pred != data$label_num) & (pred == 0)])
+
+accuracy = (tp + tn) / (tp + tn + fp + fn)
+print(paste0("Test accuracy: ", toString(accuracy*100), "%"))
+
+precision = (tp) / (tp + fp)
+print(paste0("Test precision: ", toString(precision*100), "%"))
+
+recall <- (tp) / (tp + fn)
+print(paste0("Test recall: ", toString(recall*100), "%"))
+```
