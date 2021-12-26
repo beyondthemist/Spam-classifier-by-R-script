@@ -1,6 +1,3 @@
-# Spam-classifier-by-R-script
-Based on words and Logistic regression
-
 # 데이터셋 준비
 1. enron.zip 압축 해제
 2. check.py 실행
