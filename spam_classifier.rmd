@@ -18,7 +18,7 @@ install.packages(pkgs)
 * ham과 spam을 묶기 위해 label_num을 기준으로 정렬해 앞부분은 ham, 뒷부분은 spam이 된다.
 ```{r}
 library(readxl)
-training_data = readxl::read_xlsx(".\\input\\training.xlsx")
+training_data <- readxl::read_xlsx(".\\input\\training.xlsx")
 training_data <- training_data[c("text", "label_num")] 
 
 spam_data <- training_data[training_data$label_num==1, ]
@@ -41,8 +41,8 @@ print(paste0("Ham: ", toString(length(ham_data$text))))
 ```{r}
 library(tm)
 
-spam_freq = 40
-ham_freq= 50
+spam_freq <- 40
+ham_freq <- 50
 
 corpus_spam <- Corpus(VectorSource(spam_data$text))
 tdm_spam <- TermDocumentMatrix(corpus_spam)
@@ -118,7 +118,7 @@ print(paste0("Ham accuracy: ", toString(ham_acc*100), "%"))
 result <- rep(1, length(spam_data$text))
 for(i in c(1:length(spam_data$text)))
 {
-  spam_text = spam_data$text[i][1]
+  spam_text <- spam_data$text[i][1]
   
   if((spam_text == "") | is.na(spam_text))
   {
@@ -221,10 +221,10 @@ tn <- length(pred[(pred == data$label_num) & (pred == 0)])
 fp <- length(pred[(pred != data$label_num) & (pred == 1)])
 fn <- length(pred[(pred != data$label_num) & (pred == 0)])
 
-accuracy = (tp + tn) / (tp + tn + fp + fn)
+accuracy <- (tp + tn) / (tp + tn + fp + fn)
 print(paste0("Test accuracy: ", toString(accuracy*100), "%"))
 
-precision = (tp) / (tp + fp)
+precision <- (tp) / (tp + fp)
 print(paste0("Test precision: ", toString(precision*100), "%"))
 
 recall <- (tp) / (tp + fn)
